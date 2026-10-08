@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Podcast Pitching</title>
+<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1c2230;--mute:#667085;--line:#e3e6ec;--accent:#4f46e5}
+@media(prefers-color-scheme:dark){:root{--bg:#12151c;--card:#1a1f2b;--ink:#e8ebf2;--mute:#97a0b3;--line:#2a3142;--accent:#818cf8}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+header{display:flex;gap:12px;align-items:center;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--card);flex-wrap:wrap}
+h1{font-size:18px;margin:0 12px 0 0}
+input{flex:1;min-width:200px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+button{padding:9px 16px;border:0;border-radius:8px;background:var(--accent);color:#fff;font-weight:600;cursor:pointer}
+main{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px;padding:16px 20px}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute);margin:0 0 10px}
+#graph{height:460px}
+.row{padding:8px 0;border-top:1px solid var(--line)}.row:first-of-type{border-top:0}
+.tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:99px;background:var(--bg);border:1px solid var(--line);color:var(--mute);margin-right:6px}
+a{color:var(--accent)}.mute{color:var(--mute)}#msg{color:var(--mute);font-size:13px;width:100%}
+.person{cursor:pointer;padding:6px 0;border-top:1px solid var(--line)}.person:hover{color:var(--accent)}
+</style></head><body>
+<header><h1>Podcast Pitching</h1>
+<input id="name" placeholder="Type a name to research (celebrity, coach, lawyer...)">
+<button onclick="research()">Research</button><div id="msg"></div></header>
+<main>
+ <section class="card"><h2>Relationship map</h2><div id="graph"></div>
+  <div class="mute" style="font-size:12px;margin-top:6px">Solid lines: people who know each other. Dashed lines: client pitched this person. Click a person to open their profile.</div></section>
+ <section style="display:grid;gap:16px;align-content:start">
+  <div class="card"><h2>Profile</h2><div id="profile" class="mute">Select a person from the map or list.</div></div>
+  <div class="card"><h2>People</h2><div id="people"></div></div>
+ </section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const safeUrl=u=>/^https?:\/\//.test(u||'')?u:'#';
+async function api(p,o){const r=await fetch(p,o);if(!r.ok)throw new Error((await r.json().catch(()=>({}))).detail||r.statusText);return r.json()}
+async function loadPeople(){const ps=await api('/api/people');
+ $('people').innerHTML=ps.length?ps.map(p=>`<div class="person" onclick="show(${p.id})">${esc(p.name)} <span class="mute">${p.facts} facts, ${p.contacts} contacts</span></div>`).join(''):'<span class="mute">No people yet. Research a name above.</span>'}
+async function loadGraph(){const g=await api('/api/graph');
+ const nodes=g.nodes.map(n=>({...n,shape:n.group==='client'?'box':'dot',color:n.group==='client'?'#4f46e5':'#10b981',font:{color:matchMedia('(prefers-color-scheme:dark)').matches?'#e8ebf2':'#1c2230'}}));
+ const net=new vis.Network($('graph'),{nodes:new vis.DataSet(nodes),edges:new vis.DataSet(g.edges)},{edges:{font:{size:10,align:'middle'},arrows:''},physics:{stabilization:true}});
+ net.on('click',e=>{const n=g.nodes.find(x=>x.id===e.nodes[0]);if(n&&n.pid)show(n.pid)})}
+async function show(id){const d=await api('/api/person/'+id);const p=d.person;
+ const sec=(t,rows)=>rows.length?`<h2 style="margin-top:16px">${t}</h2>${rows.join('')}`:'';
+ $('profile').innerHTML=`<div style="font-size:18px;font-weight:600">${esc(p.name)}</div><div class="mute">${esc(p.field||'')} ${esc(p.bio||'')}</div>`
+ +sec('Contacts',d.contacts.map(c=>`<div class="row"><span class="tag">${esc(c.role)}</span><b>${esc(c.email)}</b><div class="mute">${esc(c.role_note||'')}</div></div>`))
+ +sec('Pitching angle',d.pitches.map(x=>`<div class="row"><span class="tag">${esc(x.status)}</span>${esc(x.client)} / ${esc(x.show_title)}<div class="mute">${esc(x.angle||'No angle yet')}</div></div>`))
+ +sec('Knows',d.connections.map(c=>`<div class="row"><span class="tag">${esc(c.relation)}</span>${esc(c.name)}</div>`))
+ +sec('Public data',d.facts.map(f=>`<div class="row"><span class="tag">${esc(f.kind)}</span>${esc(f.summary.slice(0,220))} <a href="${esc(safeUrl(f.url))}" target="_blank" rel="noopener">source</a></div>`))}
+async function research(){const name=$('name').value.trim();if(!name)return;$('msg').textContent='Searching public sources...';
+ try{const r=await api('/api/lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+  $('msg').textContent=`${r.added} new facts found.`;await refresh();show(r.id)}catch(e){$('msg').textContent='Error: '+e.message}}
+$('name').addEventListener('keydown',e=>{if(e.key==='Enter')research()});
+async function refresh(){await Promise.all([loadPeople(),loadGraph()])}
+refresh();
+</script></body></html>
