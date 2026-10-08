@@ -2,7 +2,7 @@ from app.db import connect
 from app.lookup import lookup
 
 
-def fake_search(query, topic="general", max_results=8):
+def fake_search(query, topic="general", max_results=8, raw=False):
     return [{"title": "T", "content": f"about {topic}", "url": f"https://x.com/{topic}"}]
 
 

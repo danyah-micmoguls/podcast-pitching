@@ -1,6 +1,7 @@
 import sqlite3
 import sys
 
+from app.contacts import find_contacts
 from app.db import connect
 from app.search import tavily_search
 
@@ -26,6 +27,7 @@ def lookup(conn: sqlite3.Connection, name: str, search=tavily_search) -> int:
             )
             added += cur.rowcount
     conn.commit()
+    find_contacts(conn, person_id, name, search=search)
     return added
 
 
@@ -36,6 +38,9 @@ def main() -> None:
     conn = connect()
     added = lookup(conn, name)
     print(f"{name}: {added} new facts")
+    print("Contacts:")
+    for c in conn.execute("SELECT email, role, role_note, source_url FROM contact WHERE person_id = (SELECT id FROM person WHERE name = ?)", (name,)):
+        print(f"  [{c['role']}] {c['email']}  ({c['role_note']})  {c['source_url']}")
     for row in conn.execute(
         "SELECT kind, summary, url FROM fact WHERE person_id = (SELECT id FROM person WHERE name = ?) ORDER BY kind",
         (name,),
