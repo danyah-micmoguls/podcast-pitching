@@ -1,5 +1,19 @@
+import os
 import sqlite3
 from pathlib import Path
+
+
+def load_env(path: str | Path = ".env") -> None:
+    f = Path(path)
+    if not f.exists():
+        return
+    for line in f.read_text().splitlines():
+        k, sep, v = line.partition("=")
+        if sep and not line.lstrip().startswith("#"):
+            os.environ.setdefault(k.strip(), v.strip())
+
+
+load_env()
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS person (
